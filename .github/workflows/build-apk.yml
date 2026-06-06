@@ -1,0 +1,209 @@
+name: 🤖 Build APK
+
+on:
+  # Manual trigger from bot via API
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: 'Unique build identifier'
+        required: true
+        type: string
+      app_name:
+        description: 'Application name'
+        required: false
+        default: 'MyApp'
+        type: string
+      project_type:
+        description: 'Project type (flutter or android)'
+        required: false
+        default: 'android'
+        type: choice
+        options: [flutter, android]
+      build_type:
+        description: 'Build type'
+        required: false
+        default: 'release'
+        type: choice
+        options: [debug, release]
+
+  # Also trigger on push to main for CI
+  push:
+    branches: [main]
+    paths:
+      - 'web2apk-template/**'
+
+jobs:
+  # ─────────────────────────────────────────
+  #  BUILD JOB
+  # ─────────────────────────────────────────
+  build:
+    name: 📱 Build APK (${{ inputs.project_type || 'android' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      BUILD_ID: ${{ inputs.build_id || 'ci_test' }}
+      APP_NAME: ${{ inputs.app_name || 'MyApp' }}
+      PROJECT_TYPE: ${{ inputs.project_type || 'android' }}
+      BUILD_TYPE: ${{ inputs.build_type || 'release' }}
+
+    steps:
+      # ── Checkout ──
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Setup Java ──
+      - name: ☕ Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: gradle
+
+      # ── Setup Android SDK ──
+      - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ── Cache Gradle ──
+      - name: 📦 Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      # ── Setup Flutter (conditional) ──
+      - name: 🐦 Setup Flutter
+        if: env.PROJECT_TYPE == 'flutter'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.x'
+          channel: 'stable'
+          cache: true
+
+      - name: 🐦 Get Flutter dependencies
+        if: env.PROJECT_TYPE == 'flutter'
+        run: flutter pub get
+        working-directory: web2apk-template
+
+      # ── Anime Build Animation ──
+      - name: 🌸 Anime Build Start
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "   ╔═══════════════════════════════════════╗"
+          echo "   ║   🌸  WEB2APK PRO BUILD SYSTEM  🌸   ║"
+          echo "   ║         Powered by GitHub Actions      ║"
+          echo "   ╚═══════════════════════════════════════╝"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "  📱 App Name   : $APP_NAME"
+          echo "  🔧 Build Type : $BUILD_TYPE"
+          echo "  📦 Project    : $PROJECT_TYPE"
+          echo "  🆔 Build ID   : $BUILD_ID"
+          echo ""
+          echo "  ⚡ Starting build sequence..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      # ── Grant Gradle Permission ──
+      - name: 🔑 Grant execute permission for gradlew
+        if: env.PROJECT_TYPE == 'android'
+        run: chmod +x gradlew
+        working-directory: web2apk-template/android
+
+      # ── Build Android ──
+      - name: 🏗️ Build Android APK
+        if: env.PROJECT_TYPE == 'android'
+        run: |
+          if [ "$BUILD_TYPE" = "debug" ]; then
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          else
+            ./gradlew assembleRelease --no-daemon --stacktrace
+          fi
+        working-directory: web2apk-template/android
+
+      # ── Build Flutter ──
+      - name: 🐦 Build Flutter APK
+        if: env.PROJECT_TYPE == 'flutter'
+        run: |
+          if [ "$BUILD_TYPE" = "debug" ]; then
+            flutter build apk --debug
+          else
+            flutter build apk --release --no-tree-shake-icons
+          fi
+        working-directory: web2apk-template
+
+      # ── Locate APK ──
+      - name: 🔍 Find APK file
+        id: find_apk
+        run: |
+          if [ "$PROJECT_TYPE" = "flutter" ]; then
+            APK_PATH=$(find web2apk-template/build/app/outputs/flutter-apk -name "*.apk" | head -1)
+          else
+            APK_PATH=$(find web2apk-template/android/app/build/outputs/apk -name "*.apk" | head -1)
+          fi
+          echo "APK found: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          
+          # Rename to build_id for easy identification
+          cp "$APK_PATH" "app-${BUILD_TYPE}-${BUILD_ID}.apk"
+
+      # ── Upload Artifact ──
+      - name: 📤 Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ env.BUILD_ID }}
+          path: app-${{ env.BUILD_TYPE }}-${{ env.BUILD_ID }}.apk
+          retention-days: 7
+          if-no-files-found: error
+
+      # ── Anime Build Complete ──
+      - name: 🎉 Build Complete!
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  ✅ BUILD SUCCESSFUL!"
+          echo ""
+          echo "  🌸 APK Name  : app-${BUILD_TYPE}-${BUILD_ID}.apk"
+          echo "  🌸 App       : $APP_NAME"
+          echo "  🌸 Type      : $BUILD_TYPE"
+          echo ""
+          echo "  ⬇️  Download from Actions → Artifacts"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      # ── Notify on Failure ──
+      - name: ❌ Notify on failure
+        if: failure()
+        run: |
+          echo "BUILD FAILED for BUILD_ID=$BUILD_ID"
+          echo "Check logs above for error details."
+
+  # ─────────────────────────────────────────
+  #  NOTIFY JOB (optional Telegram webhook)
+  # ─────────────────────────────────────────
+  notify:
+    name: 📢 Notify Telegram
+    needs: build
+    runs-on: ubuntu-latest
+    if: always() && inputs.build_id != ''
+
+    steps:
+      - name: 📤 Send build result to Telegram
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
+          BUILD_STATUS: ${{ needs.build.result }}
+          BUILD_ID: ${{ inputs.build_id }}
+        run: |
+          if [ "$BUILD_STATUS" = "success" ]; then
+            MSG="✅ Build *$BUILD_ID* selesai! APK siap didownload dari Actions."
+          else
+            MSG="❌ Build *$BUILD_ID* gagal. Cek GitHub Actions untuk detail error."
+          fi
+          
+          if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${CHAT_ID}" \
+              -d "text=${MSG}" \
+              -d "parse_mode=Markdown"
+          fi
