@@ -1,0 +1,156 @@
+name: Build Flutter APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_path:
+        description: 'Path ZIP di repo'
+        required: false
+        default: ''
+      app_url:
+        description: 'URL website (untuk mode WebView)'
+        required: false
+        default: ''
+      app_name:
+        description: 'Nama aplikasi'
+        required: true
+        default: 'MyApp'
+      build_type:
+        description: 'Tipe build: debug atau release'
+        required: true
+        default: 'release'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Prepare project
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          APP_NAME_SAFE=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+          ZIP_PATH="${{ github.event.inputs.zip_path }}"
+          APP_URL="${{ github.event.inputs.app_url }}"
+
+          if [ -n "$ZIP_PATH" ] && [ -f "$ZIP_PATH" ]; then
+            echo "=== Mode: ZIP Project ==="
+            mkdir -p build_project
+            unzip -q "$ZIP_PATH" -d build_project
+            # Cari folder dengan pubspec.yaml
+            PROJ_DIR=$(find build_project -name "pubspec.yaml" -maxdepth 4 | head -1 | xargs dirname)
+            echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
+
+          elif [ -n "$APP_URL" ]; then
+            echo "=== Mode: WebView URL ==="
+            flutter create --org com.botbuild.${APP_NAME_SAFE} --project-name ${APP_NAME_SAFE} webview_project
+            PROJ_DIR="webview_project"
+
+            # Update pubspec.yaml
+            sed -i '/^  flutter:$/a\  webview_flutter: ^4.4.1' "$PROJ_DIR/pubspec.yaml"
+
+            # Generate main.dart
+            cat > "$PROJ_DIR/lib/main.dart" << 'DART'
+          import 'package:flutter/material.dart';
+          import 'package:webview_flutter/webview_flutter.dart';
+
+          void main() => runApp(const MyApp());
+
+          class MyApp extends StatelessWidget {
+            const MyApp({super.key});
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                title: 'APP_NAME_PLACEHOLDER',
+                debugShowCheckedModeBanner: false,
+                home: const WebPage(),
+              );
+            }
+          }
+
+          class WebPage extends StatefulWidget {
+            const WebPage({super.key});
+            @override
+            State<WebPage> createState() => _WebPageState();
+          }
+
+          class _WebPageState extends State<WebPage> {
+            late final WebViewController _c;
+            @override
+            void initState() {
+              super.initState();
+              _c = WebViewController()
+                ..setJavaScriptMode(JavaScriptMode.unrestricted)
+                ..loadRequest(Uri.parse('APP_URL_PLACEHOLDER'));
+            }
+            @override
+            Widget build(BuildContext context) => Scaffold(
+              body: WebViewWidget(controller: _c),
+            );
+          }
+          DART
+
+            sed -i "s|APP_NAME_PLACEHOLDER|$APP_NAME|g" "$PROJ_DIR/lib/main.dart"
+            sed -i "s|APP_URL_PLACEHOLDER|$APP_URL|g" "$PROJ_DIR/lib/main.dart"
+
+            # Tambah internet permission
+            sed -i 's|<manifest|<manifest>\n    <uses-permission android:name="android.permission.INTERNET"/>|' \
+              "$PROJ_DIR/android/app/src/main/AndroidManifest.xml" || true
+
+            echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
+          else
+            echo "ERROR: Tidak ada ZIP_PATH atau APP_URL!"
+            exit 1
+          fi
+
+          echo "APP_NAME_SAFE=$APP_NAME_SAFE" >> $GITHUB_ENV
+
+      - name: Flutter pub get
+        run: |
+          cd "${{ env.PROJECT_DIR }}"
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd "${{ env.PROJECT_DIR }}"
+          BUILD_TYPE="${{ github.event.inputs.build_type }}"
+          if [ "$BUILD_TYPE" = "debug" ]; then
+            flutter build apk --debug --no-tree-shake-icons
+            APK_PATH=$(find . -name "app-debug.apk" | head -1)
+          else
+            flutter build apk --release --no-tree-shake-icons
+            APK_PATH=$(find . -name "app-release.apk" | head -1)
+          fi
+          echo "APK_PATH=${{ env.PROJECT_DIR }}/${APK_PATH#./}" >> $GITHUB_ENV
+          echo "APK built: $APK_PATH"
+
+      - name: Rename APK
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          APK_SRC="${{ env.APK_PATH }}"
+          APK_DEST="${APP_NAME}.apk"
+          cp "$APK_SRC" "$APK_DEST"
+          echo "FINAL_APK=$APK_DEST" >> $GITHUB_ENV
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: APK-${{ github.event.inputs.app_name }}
+          path: ${{ env.FINAL_APK }}
+          retention-days: 1
