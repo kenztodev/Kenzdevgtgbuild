@@ -1,4 +1,4 @@
-name: 🌸 Web2APK Pro — Build APK & Send to Telegram
+name: 🐦 Build Flutter APK & Kirim ke User
 
 on:
   workflow_dispatch:
@@ -6,82 +6,22 @@ on:
       app_name:
         description: '📱 Nama Aplikasi'
         required: true
-        default: 'MyApp'
-        type: string
-      package_name:
-        description: '📦 Package Name (com.example.app)'
+        default: 'MyFlutterApp'
+      chat_id:
+        description: '📤 ID Chat User Tujuan'
         required: true
-        default: 'com.myapp.webview'
-        type: string
-      url_website:
-        description: '🌐 URL Website'
-        required: true
-        default: 'https://example.com'
-        type: string
-      project_type:
-        description: '📦 Tipe Project'
-        required: false
-        default: 'webview'
-        type: choice
-        options:
-          - webview
-          - flutter
-          - android
-      build_type:
-        description: '🔧 Tipe Build'
-        required: false
-        default: 'release'
-        type: choice
-        options:
-          - debug
-          - release
-      icon_url:
-        description: '🖼️ URL Icon (opsional)'
-        required: false
-        default: ''
-        type: string
-      send_to_telegram:
-        description: '📤 Kirim APK ke Telegram?'
-        required: false
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
-
-# Agar tidak ada build paralel yang bentrok
-concurrency:
-  group: build-apk-${{ github.event.inputs.app_name }}
-  cancel-in-progress: true
+        default: '123456789'
 
 jobs:
   build:
-    name: 🔨 Build APK
+    name: 🔨 Build Flutter APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
-    outputs:
-      apk_name: ${{ steps.apk.outputs.name }}
-      apk_path: ${{ steps.apk.outputs.path }}
 
     steps:
       # ══════════════════════════════════════════════
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
-
-      # ══════════════════════════════════════════════
-      - name: 🎨 Banner Build Start
-        run: |
-          echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║  🌸 Web2APK Pro Builder v5.0                                 ║"
-          echo "╠══════════════════════════════════════════════════════════════╣"
-          echo "║  📱 App Name   : ${{ github.event.inputs.app_name }}"
-          echo "║  📦 Package    : ${{ github.event.inputs.package_name }}"
-          echo "║  🌐 URL        : ${{ github.event.inputs.url_website }}"
-          echo "║  🔧 Build Type : ${{ github.event.inputs.build_type }}"
-          echo "║  📂 Project    : ${{ github.event.inputs.project_type }}"
-          echo "╚══════════════════════════════════════════════════════════════╝"
-          echo ""
 
       # ══════════════════════════════════════════════
       - name: ☕ Setup Java 17
@@ -95,195 +35,97 @@ jobs:
         uses: android-actions/setup-android@v3
 
       # ══════════════════════════════════════════════
-      - name: 🌐 Setup Node.js (untuk WebView)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      # ══════════════════════════════════════════════
-      - name: 🐦 Setup Flutter (jika flutter)
-        if: github.event.inputs.project_type == 'flutter'
+      - name: 🐦 Setup Flutter (WAJIB!)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.x'
+          flutter-version: '3.22.4'
           channel: 'stable'
+          cache: true
 
       # ══════════════════════════════════════════════
-      - name: 📥 Download/Generate Project Template
-        id: template
-        run: |
-          mkdir -p project
-          
-          if [ "${{ github.event.inputs.project_type }}" = "webview" ]; then
-            echo "📱 Membuat WebView APK dari URL..."
-            
-            # Clone WebView template
-            git clone https://github.com/mhmdhidayat/Android-WebView.git template || true
-            
-            # Setup project dengan package name
-            cd template || exit 1
-            
-            # Ganti package name
-            find . -type f -name "*.xml" -o -name "*.gradle" -o -name "*.kt" -o -name "*.java" | while read file; do
-              sed -i 's/com\.example\.webview/${{ github.event.inputs.package_name }}/g' "$file" 2>/dev/null || true
-              sed -i 's/WebView App/${{ github.event.inputs.app_name }}/g' "$file" 2>/dev/null || true
-            done
-            
-            # Ganti URL di MainActivity
-            if [ -f "app/src/main/java/.../MainActivity.kt" ]; then
-              MAIN_FILE=$(find app/src/main/java -name "MainActivity.kt" | head -1)
-              sed -i 's|https://example.com|${{ github.event.inputs.url_website }}|g' "$MAIN_FILE"
-            fi
-            
-            cd ..
-            mv template project/webview-app
-            
-          elif [ "${{ github.event.inputs.project_type }}" = "android" ]; then
-            echo "📦 Membuat Android Native Project..."
-            # Gunakan template Android native sederhana
-            git clone https://github.com/android/architecture-templates.git temp || true
-            mv temp project/android-app
-            
-          elif [ "${{ github.event.inputs.project_type }}" = "flutter" ]; then
-            echo "🐦 Membuat Flutter Project..."
-            flutter create --org ${package_name%.*} --project-name ${app_name// /_} project/flutter-app
-            cd project/flutter-app
-            flutter pub get
-            cd ../..
-          fi
-          
-          echo "✅ Template siap!"
-          ls -la project/
+      - name: 🐦 Verifikasi Flutter
+        run: flutter --version
 
       # ══════════════════════════════════════════════
-      - name: 🖼️ Download Icon (jika ada)
-        if: github.event.inputs.icon_url != ''
+      - name: 📦 Download & Setup Project Flutter
         run: |
-          mkdir -p project/webview-app/app/src/main/res/drawable
-          curl -L "${{ github.event.inputs.icon_url }}" -o project/webview-app/app/src/main/res/drawable/ic_launcher.png
-          echo "✅ Icon downloaded"
+          # Buat project Flutter baru
+          flutter create --org com.user.app --project-name my_app flutter_project
+          cd flutter_project
+          
+          # Install dependencies
+          flutter pub get
+          
+          # Bisa juga clone project dari repository kakak
+          # git clone https://github.com/username/project-flutter-kakak.git .
+          
+          cd ..
 
       # ══════════════════════════════════════════════
-      - name: 🏗️ Build APK (Android/WebView)
-        if: github.event.inputs.project_type != 'flutter'
+      - name: 🏗️ Build APK Release
         run: |
-          cd project/webview-app
-          chmod +x gradlew
-          
-          if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
-            ./gradlew assembleDebug --no-daemon --stacktrace
-          else
-            ./gradlew assembleRelease --no-daemon --stacktrace
-          fi
-          
-          cd ../..
-
-      - name: 🏗️ Build APK (Flutter)
-        if: github.event.inputs.project_type == 'flutter'
-        run: |
-          cd project/flutter-app
-          if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
-            flutter build apk --debug
-          else
-            flutter build apk --release
-          fi
-          cd ../..
+          cd flutter_project
+          flutter build apk --release
+          cd ..
 
       # ══════════════════════════════════════════════
       - name: 🔍 Locate & Rename APK
         id: apk
         run: |
-          APK_NAME="${{ github.event.inputs.app_name }}-${{ github.event.inputs.build_type }}-$(date +%Y%m%d-%H%M%S).apk"
+          APK_NAME="${{ github.event.inputs.app_name }}-$(date +%Y%m%d-%H%M%S).apk"
           APK_NAME_CLEAN="${APK_NAME// /_}"
           
-          # Cari APK hasil build
-          if [ -f "project/webview-app/app/build/outputs/apk/debug/app-debug.apk" ]; then
-            cp "project/webview-app/app/build/outputs/apk/debug/app-debug.apk" "$APK_NAME_CLEAN"
-          elif [ -f "project/webview-app/app/build/outputs/apk/release/app-release.apk" ]; then
-            cp "project/webview-app/app/build/outputs/apk/release/app-release.apk" "$APK_NAME_CLEAN"
-          elif [ -f "project/flutter-app/build/app/outputs/flutter-apk/app-release.apk" ]; then
-            cp "project/flutter-app/build/app/outputs/flutter-apk/app-release.apk" "$APK_NAME_CLEAN"
-          elif [ -f "project/flutter-app/build/app/outputs/flutter-apk/app-debug.apk" ]; then
-            cp "project/flutter-app/build/app/outputs/flutter-apk/app-debug.apk" "$APK_NAME_CLEAN"
+          # Cari APK hasil build Flutter
+          if [ -f "flutter_project/build/app/outputs/flutter-apk/app-release.apk" ]; then
+            cp "flutter_project/build/app/outputs/flutter-apk/app-release.apk" "$APK_NAME_CLEAN"
+          elif [ -f "flutter_project/build/app/outputs/flutter-apk/app-debug.apk" ]; then
+            cp "flutter_project/build/app/outputs/flutter-apk/app-debug.apk" "$APK_NAME_CLEAN"
           else
             echo "❌ APK tidak ditemukan!"
-            find . -name "*.apk" 2>/dev/null || true
+            find . -name "*.apk"
             exit 1
           fi
           
           echo "name=$APK_NAME_CLEAN" >> $GITHUB_OUTPUT
           echo "path=$APK_NAME_CLEAN" >> $GITHUB_OUTPUT
-          echo "✅ APK: $APK_NAME_CLEAN ($(du -sh $APK_NAME_CLEAN | cut -f1))"
+          echo "✅ APK siap: $APK_NAME_CLEAN"
 
       # ══════════════════════════════════════════════
-      - name: 📤 Upload APK sebagai Artifact
+      - name: 📤 Upload APK ke Artifact (cadangan)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.apk.outputs.name }}
           path: ${{ steps.apk.outputs.path }}
           retention-days: 7
-          if-no-files-found: error
 
       # ══════════════════════════════════════════════
-      - name: 🎉 Banner Build Selesai
-        run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║  ✅ BUILD APK SELESAI!                                       ║"
-          echo "╠══════════════════════════════════════════════════════════════╣"
-          echo "║  📱 APK: ${{ steps.apk.outputs.name }}"
-          echo "║  📦 Size: $(du -sh ${{ steps.apk.outputs.path }} | cut -f1)"
-          echo "║  ⬇️  Download: GitHub Actions → Artifacts                   ║"
-          echo "╚══════════════════════════════════════════════════════════════╝"
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # KIRIM APK KE TELEGRAM
-  # ══════════════════════════════════════════════════════════════════════════
-  send-to-telegram:
-    name: 📤 Send APK to Telegram
-    needs: build
-    if: github.event.inputs.send_to_telegram == 'true' && github.event.inputs.app_name != ''
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Download APK Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ needs.build.outputs.apk_name }}
-          path: ./apk-download
-
-      - name: 📤 Kirim APK ke Telegram
+      - name: 📤 Kirim APK ke Telegram User
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          APK_FILE=$(ls ./apk-download/*.apk | head -1)
-          APK_NAME=$(basename "$APK_FILE")
-          FILE_SIZE=$(du -sh "$APK_FILE" | cut -f1)
+          CHAT_ID="${{ github.event.inputs.chat_id }}"
+          APK_PATH="${{ steps.apk.outputs.path }}"
+          APP_NAME="${{ github.event.inputs.app_name }}"
           
-          # Kirim caption dulu
+          # Kirim pesan info dulu
           curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
             -d "chat_id=${CHAT_ID}" \
-            -d "text=✅ *Build APK Selesai!*%0A%0A📱 *Nama:* ${{ github.event.inputs.app_name }}%0A📦 *Package:* ${{ github.event.inputs.package_name }}%0A🔧 *Build:* ${{ github.event.inputs.build_type }}%0A📂 *Size:* ${FILE_SIZE}%0A🌐 *URL:* ${{ github.event.inputs.url_website }}%0A%0A⬇️ *Download APK di bawah ini:*" \
+            -d "text=✅ *Build APK Selesai!*%0A%0A📱 *Nama:* ${APP_NAME}%0A🔧 *Build:* Release%0A📦 *Platform:* Flutter%0A%0A⬇️ *Download APK di bawah ini:*" \
             -d "parse_mode=Markdown"
           
           # Kirim file APK
           curl -s -F "chat_id=${CHAT_ID}" \
-            -F "document=@${APK_FILE}" \
-            -F "caption=📱 *${{ github.event.inputs.app_name }}.apk*%0A✅ *Build sukses oleh Web2APK Bot*" \
+            -F "document=@${APK_PATH}" \
+            -F "caption=📱 *${APP_NAME}.apk*%0A✅ *Build sukses oleh Web2APK Bot*" \
             -F "parse_mode=Markdown" \
             "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
           
-          echo "✅ APK berhasil dikirim ke Telegram!"
+          echo "✅ APK terkirim ke Telegram!"
 
-      - name: 🔔 Notifikasi ke Owner (opsional)
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          OWNER_CHAT_ID: ${{ secrets.OWNER_CHAT_ID }}
-        if: env.OWNER_CHAT_ID != ''
+      # ══════════════════════════════════════════════
+      - name: 🎉 Selesai
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${OWNER_CHAT_ID}" \
-            -d "text=📢 *Ada build baru!*%0A%0A📱 App: ${{ github.event.inputs.app_name }}%0A👤 User: ${{ github.actor }}%0A🔧 Type: ${{ github.event.inputs.build_type }}%0A🕐 Waktu: $(date '+%Y-%m-%d %H:%M:%S')" \
-            -d "parse_mode=Markdown" \
-            -d "disable_web_page_preview=true" || true
+          echo "╔════════════════════════════════════════════╗"
+          echo "║  ✅ BUILD APK SELESAI!                      ║"
+          echo "║  📱 APK sudah dikirim ke user               ║"
+          echo "╚════════════════════════════════════════════╝"
