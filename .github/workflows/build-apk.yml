@@ -1,15 +1,30 @@
-name: 🚀 FINAL BUILD APK - PASTI JALAN
+name: 🚀 ULTIMATE APK BUILDER (Flutter/Android/WebView)
 
 on:
   workflow_dispatch:
     inputs:
+      # ========== KONFIGURASI DASAR ==========
       app_name:
         description: '📱 Nama Aplikasi'
         required: true
         default: 'MyApp'
-      chat_id:
-        description: '📤 ID Chat User (wajib angka)'
+        type: string
+      
+      build_type:
+        description: '🔧 Tipe Build'
         required: true
+        default: 'release'
+        type: choice
+        options:
+          - debug
+          - release
+      
+      chat_id:
+        description: '📤 ID Chat User Tujuan (WAJIB)'
+        required: true
+        type: string
+      
+      # ========== TIPE PROJECT ==========
       project_type:
         description: '📦 Tipe Project'
         required: true
@@ -17,78 +32,127 @@ on:
         type: choice
         options:
           - webview
-          - flutter
+          - flutter_git
+          - flutter_zip
+          - android_zip
+      
+      # ========== UNTUK WEBVIEW ==========
       url_website:
         description: '🌐 URL Website (untuk webview)'
         required: false
         default: 'https://example.com'
+        type: string
+      
+      package_name:
+        description: '📦 Package Name (untuk webview, contoh: com.namamu.app)'
+        required: false
+        default: 'com.myapp.webview'
+        type: string
+      
+      # ========== UNTUK FLUTTER GIT ==========
+      git_repo_url:
+        description: '🔗 URL Git Repo Flutter (public)'
+        required: false
+        default: ''
+        type: string
+      
+      git_branch:
+        description: '🌿 Branch'
+        required: false
+        default: 'main'
+        type: string
+      
+      # ========== UNTUK ZIP (Flutter/Android) ==========
+      zip_download_url:
+        description: '📦 URL Download ZIP project (untuk flutter_zip atau android_zip)'
+        required: false
+        default: ''
+        type: string
+
+# HANYA 1 BUILD DALAM 1 WAKTU
+concurrency:
+  group: apk-builder-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   build:
+    name: 🔨 Build APK
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     
     steps:
-      # ========================================
+      # ============================================
       # 1. CHECKOUT & BANNER
-      # ========================================
-      - name: Checkout
+      # ============================================
+      - name: 📥 Checkout
         uses: actions/checkout@v4
       
-      - name: Banner
+      - name: 🎨 Banner
         run: |
-          echo "╔════════════════════════════════════════╗"
-          echo "║  🌸 FINAL APK BUILDER v1.0             ║"
-          echo "║  📱 ${{ github.event.inputs.app_name }}"
-          echo "║  📦 ${{ github.event.inputs.project_type }}"
-          echo "╚════════════════════════════════════════╝"
-      
-      # ========================================
-      # 2. SETUP JAVA & ANDROID SDK
-      # ========================================
-      - name: Setup Java
+          echo "╔════════════════════════════════════════════════════════════════╗"
+          echo "║  🚀 ULTIMATE APK BUILDER v6.0                                   ║"
+          echo "╠════════════════════════════════════════════════════════════════╣"
+          echo "║  📱 App      : ${{ github.event.inputs.app_name }}"
+          echo "║  📦 Type     : ${{ github.event.inputs.project_type }}"
+          echo "║  🔧 Build    : ${{ github.event.inputs.build_type }}"
+          echo "║  📤 Chat ID  : ${{ github.event.inputs.chat_id }}"
+          echo "╚════════════════════════════════════════════════════════════════╝"
+          echo ""
+
+      # ============================================
+      # 2. SETUP JAVA (WAJIB UNTUK SEMUA)
+      # ============================================
+      - name: ☕ Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: gradle
       
-      - name: Setup Android SDK
+      - name: 🤖 Setup Android SDK
         uses: android-actions/setup-android@v3
-      
-      # ========================================
-      # 3. INSTALL FLUTTER (MANUAL, PASTI OK)
-      # ========================================
-      - name: Install Flutter
-        if: github.event.inputs.project_type == 'flutter'
+
+      # ============================================
+      # 3. INSTALL FLUTTER (JIKA FLUTTER)
+      # ============================================
+      - name: 🐦 Install Flutter (Manual - PASTI OK)
+        if: contains(github.event.inputs.project_type, 'flutter')
         run: |
-          git clone https://github.com/flutter/flutter.git --depth 1 -b stable
-          echo "$(pwd)/flutter/bin" >> $GITHUB_PATH
-          flutter precache
+          # Clone Flutter SDK langsung ke /opt
+          sudo git clone https://github.com/flutter/flutter.git --depth 1 -b stable /opt/flutter
+          sudo chmod -R 777 /opt/flutter
+          echo "/opt/flutter/bin" >> $GITHUB_PATH
+          /opt/flutter/bin/flutter precache
       
-      - name: Verifikasi Flutter
-        if: github.event.inputs.project_type == 'flutter'
-        run: flutter doctor -v
+      - name: 🐦 Verifikasi Flutter
+        if: contains(github.event.inputs.project_type, 'flutter')
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      # ============================================
+      # 4. PERSIAPAN SOURCE CODE (BERDASARKAN TIPE)
+      # ============================================
       
-      # ========================================
-      # 4. BUAT PROJECT
-      # ========================================
-      
-      # ----- UNTUK WEBVIEW (Android Native) -----
-      - name: Buat WebView Project
+      # ---------- WEBVIEW (ANDROID NATIVE) ----------
+      - name: 🌐 Buat WebView Project
         if: github.event.inputs.project_type == 'webview'
         run: |
-          mkdir -p app/src/main/java/com/myapp/webview
+          echo "📱 Membuat WebView APK untuk: ${{ github.event.inputs.url_website }}"
+          
+          PACKAGE_PATH=$(echo "${{ github.event.inputs.package_name }}" | tr '.' '/')
+          
+          mkdir -p app/src/main/java/$PACKAGE_PATH
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/drawable
           mkdir -p gradle/wrapper
           
           # Download gradle wrapper
-          curl -L -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar
+          curl -sL -o gradle/wrapper/gradle-wrapper.jar https://github.com/gradle/gradle/raw/master/gradle/wrapper/gradle-wrapper.jar
           
           # settings.gradle
           cat > settings.gradle << 'EOF'
-          rootProject.name = 'MyApp'
+          rootProject.name = 'WebApp'
           include ':app'
           EOF
           
@@ -98,6 +162,7 @@ jobs:
               repositories { google(); mavenCentral() }
               dependencies { classpath 'com.android.tools.build:gradle:8.1.0' }
           }
+          allprojects { repositories { google(); mavenCentral() } }
           task clean(type: Delete) { delete rootProject.buildDir }
           EOF
           
@@ -105,16 +170,16 @@ jobs:
           cat > app/build.gradle << 'EOF'
           plugins { id 'com.android.application' }
           android {
-              namespace 'com.myapp.webview'
+              namespace '${{ github.event.inputs.package_name }}'
               compileSdk 34
               defaultConfig {
-                  applicationId 'com.myapp.webview'
+                  applicationId "${{ github.event.inputs.package_name }}"
                   minSdk 21
                   targetSdk 34
                   versionCode 1
-                  versionName '1.0'
+                  versionName "1.0"
               }
-              buildTypes { release { minifyEnabled false } }
+              buildTypes { release { minifyEnabled false } debug { debuggable true } }
           }
           dependencies {
               implementation 'androidx.appcompat:appcompat:1.6.1'
@@ -127,7 +192,7 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
-              <application android:label="${{ github.event.inputs.app_name }}" android:usesCleartextTraffic="true">
+              <application android:label="${{ github.event.inputs.app_name }}" android:usesCleartextTraffic="true" android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
                   </activity>
@@ -136,11 +201,13 @@ jobs:
           EOF
           
           # MainActivity.java
-          cat > app/src/main/java/com/myapp/webview/MainActivity.java << 'EOF'
-          package com.myapp.webview;
+          cat > app/src/main/java/$PACKAGE_PATH/MainActivity.java << 'EOF'
+          package ${{ github.event.inputs.package_name }};
           import android.os.Bundle;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
           import androidx.appcompat.app.AppCompatActivity;
           public class MainActivity extends AppCompatActivity {
               private WebView webView;
@@ -149,8 +216,11 @@ jobs:
                   super.onCreate(savedInstanceState);
                   setContentView(R.layout.activity_main);
                   webView = findViewById(R.id.webView);
+                  WebSettings ws = webView.getSettings();
+                  ws.setJavaScriptEnabled(true);
+                  ws.setDomStorageEnabled(true);
                   webView.setWebViewClient(new WebViewClient());
-                  webView.getSettings().setJavaScriptEnabled(true);
+                  webView.setWebChromeClient(new WebChromeClient());
                   webView.loadUrl("${{ github.event.inputs.url_website }}");
               }
               @Override
@@ -170,111 +240,216 @@ jobs:
               android:layout_height="match_parent" />
           EOF
           
+          # gradle-wrapper.properties
+          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.0-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+          
           # gradle.properties
           cat > gradle.properties << 'EOF'
           org.gradle.jvmargs=-Xmx2048m
           android.useAndroidX=true
           EOF
           
-          echo "✅ WebView Project siap"
-      
-      # ----- UNTUK FLUTTER -----
-      - name: Buat Flutter Project
-        if: github.event.inputs.project_type == 'flutter'
-        run: |
-          flutter create --org com.user.app --project-name my_app flutter_project
-          cd flutter_project
-          flutter pub get
-          cd ..
-          echo "✅ Flutter Project siap"
-      
-      # ========================================
-      # 5. BUILD APK
-      # ========================================
-      
-      - name: Build WebView APK
-        if: github.event.inputs.project_type == 'webview'
-        run: |
-          # Buat gradle wrapper
+          # Buat gradlew script
           cat > gradlew << 'EOF'
-          #!/bin/bash
+          #!/bin/sh
           exec java -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain "$@"
           EOF
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          
+          echo "✅ WebView Project siap!"
       
-      - name: Build Flutter APK
-        if: github.event.inputs.project_type == 'flutter'
+      # ---------- FLUTTER DARI GIT ----------
+      - name: 🐦 Clone Flutter dari Git
+        if: github.event.inputs.project_type == 'flutter_git'
+        run: |
+          echo "🐦 Clone dari: ${{ github.event.inputs.git_repo_url }}"
+          git clone --depth 1 --branch ${{ github.event.inputs.git_branch }} \
+            ${{ github.event.inputs.git_repo_url }} flutter_project
+          cd flutter_project
+          flutter pub get
+          cd ..
+          echo "✅ Flutter project siap!"
+      
+      # ---------- FLUTTER DARI ZIP ----------
+      - name: 🐦 Download & Extract Flutter ZIP
+        if: github.event.inputs.project_type == 'flutter_zip'
+        run: |
+          echo "🐦 Download ZIP dari: ${{ github.event.inputs.zip_download_url }}"
+          curl -L "${{ github.event.inputs.zip_download_url }}" -o project.zip
+          unzip -q project.zip -d flutter_project_temp
+          # Cari folder yang mengandung pubspec.yaml
+          mv $(find flutter_project_temp -name "pubspec.yaml" -printf "%h\n" | head -1) flutter_project
+          cd flutter_project
+          flutter pub get
+          cd ..
+          echo "✅ Flutter ZIP project siap!"
+      
+      # ---------- ANDROID DARI ZIP ----------
+      - name: 📦 Download & Extract Android ZIP
+        if: github.event.inputs.project_type == 'android_zip'
+        run: |
+          echo "📦 Download ZIP dari: ${{ github.event.inputs.zip_download_url }}"
+          curl -L "${{ github.event.inputs.zip_download_url }}" -o project.zip
+          unzip -q project.zip -d android_project_temp
+          # Cari folder yang mengandung build.gradle
+          mv $(find android_project_temp -name "build.gradle" -printf "%h\n" | head -1) android_project
+          cd android_project
+          chmod +x gradlew 2>/dev/null || true
+          cd ..
+          echo "✅ Android ZIP project siap!"
+
+      # ============================================
+      # 5. BUILD APK
+      # ============================================
+      
+      # ---------- BUILD WEBVIEW ----------
+      - name: 🏗️ Build WebView APK
+        if: github.event.inputs.project_type == 'webview'
+        run: |
+          if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
+            ./gradlew assembleDebug --no-daemon
+          else
+            ./gradlew assembleRelease --no-daemon
+          fi
+      
+      # ---------- BUILD FLUTTER ----------
+      - name: 🏗️ Build Flutter APK
+        if: contains(github.event.inputs.project_type, 'flutter')
         run: |
           cd flutter_project
-          flutter build apk --release
+          if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
+            flutter build apk --debug
+          else
+            flutter build apk --release --no-tree-shake-icons
+          fi
           cd ..
       
-      # ========================================
-      # 6. FIND & RENAME APK
-      # ========================================
-      - name: Find APK
+      # ---------- BUILD ANDROID ZIP ----------
+      - name: 🏗️ Build Android APK from ZIP
+        if: github.event.inputs.project_type == 'android_zip'
+        run: |
+          cd android_project
+          if [ ! -f "gradlew" ]; then
+            echo "Gradle wrapper tidak ditemukan, membuat..."
+            gradle wrapper
+          fi
+          chmod +x gradlew
+          if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
+            ./gradlew assembleDebug --no-daemon
+          else
+            ./gradlew assembleRelease --no-daemon
+          fi
+          cd ..
+
+      # ============================================
+      # 6. CARI & RENAME APK
+      # ============================================
+      - name: 🔍 Cari dan Rename APK
         id: apk
         run: |
           APK_FILE=""
+          
+          # Cari WebView APK
           if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
             APK_FILE="app/build/outputs/apk/release/app-release.apk"
-          elif [ -f "flutter_project/build/app/outputs/flutter-apk/app-release.apk" ]; then
-            APK_FILE="flutter_project/build/app/outputs/flutter-apk/app-release.apk"
           elif [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
             APK_FILE="app/build/outputs/apk/debug/app-debug.apk"
+          # Cari Flutter APK
+          elif [ -f "flutter_project/build/app/outputs/flutter-apk/app-release.apk" ]; then
+            APK_FILE="flutter_project/build/app/outputs/flutter-apk/app-release.apk"
+          elif [ -f "flutter_project/build/app/outputs/flutter-apk/app-debug.apk" ]; then
+            APK_FILE="flutter_project/build/app/outputs/flutter-apk/app-debug.apk"
+          # Cari Android ZIP APK
+          elif [ -f "android_project/app/build/outputs/apk/release/app-release.apk" ]; then
+            APK_FILE="android_project/app/build/outputs/apk/release/app-release.apk"
+          elif [ -f "android_project/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            APK_FILE="android_project/app/build/outputs/apk/debug/app-debug.apk"
           else
-            echo "❌ APK tidak ditemukan!"
-            find . -name "*.apk"
+            echo "❌ APK TIDAK DITEMUKAN!"
+            find . -name "*.apk" 2>/dev/null || true
             exit 1
           fi
           
-          NEW_NAME="${{ github.event.inputs.app_name }}-$(date +%Y%m%d-%H%M%S).apk"
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          NEW_NAME="${{ github.event.inputs.app_name }}-${{ github.event.inputs.build_type }}-${TIMESTAMP}.apk"
           NEW_NAME_CLEAN="${NEW_NAME// /_}"
           cp "$APK_FILE" "$NEW_NAME_CLEAN"
           
           echo "path=$NEW_NAME_CLEAN" >> $GITHUB_OUTPUT
           echo "name=$NEW_NAME_CLEAN" >> $GITHUB_OUTPUT
-          echo "✅ APK: $NEW_NAME_CLEAN"
-      
-      # ========================================
-      # 7. UPLOAD ARTIFACT
-      # ========================================
-      - name: Upload Artifact
+          echo "size=$(du -sh $NEW_NAME_CLEAN | cut -f1)" >> $GITHUB_OUTPUT
+          
+          echo "✅ APK: $NEW_NAME_CLEAN ($(du -sh $NEW_NAME_CLEAN | cut -f1))"
+
+      # ============================================
+      # 7. UPLOAD KE ARTIFACT (CADANGAN)
+      # ============================================
+      - name: 📦 Upload ke Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.apk.outputs.name }}
           path: ${{ steps.apk.outputs.path }}
           retention-days: 7
-      
-      # ========================================
-      # 8. KIRIM KE TELEGRAM
-      # ========================================
-      - name: Kirim ke Telegram
+
+      # ============================================
+      # 8. KIRIM KE TELEGRAM USER
+      # ============================================
+      - name: 📤 Kirim APK ke Telegram User
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
+          CHAT_ID="${{ github.event.inputs.chat_id }}"
+          APK_PATH="${{ steps.apk.outputs.path }}"
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          BUILD_TYPE="${{ github.event.inputs.build_type }}"
+          PROJECT_TYPE="${{ github.event.inputs.project_type }}"
+          FILE_SIZE="${{ steps.apk.outputs.size }}"
+          
           # Kirim pesan teks
           curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${{ github.event.inputs.chat_id }}" \
-            -d "text=✅ *${{ github.event.inputs.app_name }}*%0A🔧 Build: Release%0A📂 Size: $(du -sh ${{ steps.apk.outputs.path }} | cut -f1)%0A%0A⬇️ Download APK di bawah ini:" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=✅ *${APP_NAME}* APK siap!%0A%0A📱 *Nama:* ${APP_NAME}%0A🔧 *Build:* ${BUILD_TYPE}%0A📦 *Type:* ${PROJECT_TYPE}%0A📂 *Size:* ${FILE_SIZE}%0A%0A⬇️ Download APK di bawah ini:" \
             -d "parse_mode=Markdown"
           
           # Kirim file APK
-          curl -F "chat_id=${{ github.event.inputs.chat_id }}" \
-               -F "document=@${{ steps.apk.outputs.path }}" \
-               -F "caption=📱 *${{ github.event.inputs.app_name }}.apk* siap dipasang!" \
-               -F "parse_mode=Markdown" \
-               "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
+          curl -s -F "chat_id=${CHAT_ID}" \
+            -F "document=@${APK_PATH}" \
+            -F "caption=📱 *${APP_NAME}.apk*%0A✅ Build sukses!%0A🔧 ${BUILD_TYPE} build" \
+            -F "parse_mode=Markdown" \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
           
-          echo "✅ APK terkirim!"
+          echo "✅ APK terkirim ke Telegram!"
       
-      # ========================================
-      # 9. SELESAI
-      # ========================================
-      - name: Selesai
+      # ============================================
+      # 9. NOTIFIKASI KE OWNER (OPSIONAL)
+      # ============================================
+      - name: 🔔 Notifikasi Owner
+        if: secrets.OWNER_CHAT_ID != ''
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          OWNER_CHAT_ID: ${{ secrets.OWNER_CHAT_ID }}
         run: |
-          echo "╔════════════════════════════════════════╗"
-          echo "║  ✅ BUILD SELESAI!                      ║"
-          echo "║  📱 APK sudah dikirim ke Telegram       ║"
-          echo "╚════════════════════════════════════════╝"
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${OWNER_CHAT_ID}" \
+            -d "text=📢 *Build APK Baru!*%0A%0A📱 App: ${{ github.event.inputs.app_name }}%0A📦 Type: ${{ github.event.inputs.project_type }}%0A🔧 Build: ${{ github.event.inputs.build_type }}%0A📤 User: ${{ github.event.inputs.chat_id }}%0A🕐 Waktu: $(date '+%Y-%m-%d %H:%M:%S')" \
+            -d "parse_mode=Markdown" || true
+
+      # ============================================
+      # 10. SELESAI
+      # ============================================
+      - name: 🎉 Selesai
+        run: |
+          echo ""
+          echo "╔════════════════════════════════════════════════════════════════╗"
+          echo "║  ✅ BUILD APK SELESAI!                                          ║"
+          echo "╠════════════════════════════════════════════════════════════════╣"
+          echo "║  📱 APK : ${{ steps.apk.outputs.name }}"
+          echo "║  📦 Size: ${{ steps.apk.outputs.size }}"
+          echo "║  📤 Sudah dikirim ke Telegram user!                             ║"
+          echo "╚════════════════════════════════════════════════════════════════╝"
