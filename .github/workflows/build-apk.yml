@@ -1,58 +1,70 @@
-name: 🤖 Build APK
+name: 🌸 Web2APK Pro — Build APK
 
 on:
-  # Manual trigger from bot via API
   workflow_dispatch:
     inputs:
       build_id:
-        description: 'Unique build identifier'
+        description: 'Build ID unik'
         required: true
         type: string
       app_name:
-        description: 'Application name'
+        description: 'Nama aplikasi'
         required: false
         default: 'MyApp'
         type: string
       project_type:
-        description: 'Project type (flutter or android)'
+        description: 'Tipe project'
         required: false
         default: 'android'
         type: choice
         options: [flutter, android]
       build_type:
-        description: 'Build type'
+        description: 'Tipe build'
         required: false
         default: 'release'
         type: choice
         options: [debug, release]
 
-  # Also trigger on push to main for CI
-  push:
-    branches: [main]
-    paths:
-      - 'web2apk-template/**'
-
 jobs:
-  # ─────────────────────────────────────────
-  #  BUILD JOB
-  # ─────────────────────────────────────────
   build:
-    name: 📱 Build APK (${{ inputs.project_type || 'android' }})
+    name: 🔨 Build APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     env:
-      BUILD_ID: ${{ inputs.build_id || 'ci_test' }}
-      APP_NAME: ${{ inputs.app_name || 'MyApp' }}
+      BUILD_ID:     ${{ inputs.build_id || 'ci_test' }}
+      APP_NAME:     ${{ inputs.app_name || 'MyApp' }}
       PROJECT_TYPE: ${{ inputs.project_type || 'android' }}
-      BUILD_TYPE: ${{ inputs.build_type || 'release' }}
+      BUILD_TYPE:   ${{ inputs.build_type || 'release' }}
 
     steps:
-      # ── Checkout ──
-      - name: 📥 Checkout repository
+
+      # ══════════════════════════════════════════════
+      - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      # ── Setup Java ──
+      # ══════════════════════════════════════════════
+      - name: 🌸 Animasi — Build Start
+        run: |
+          echo ""
+          echo "  ╔══════════════════════════════════════════════════╗"
+          echo "  ║  ██╗    ██╗███████╗██████╗ ██████╗  █████╗ ██╗  ║"
+          echo "  ║  ██║    ██║██╔════╝██╔══██╗╚════██╗██╔══██╗██║  ║"
+          echo "  ║  ██║ █╗ ██║█████╗  ██████╔╝ █████╔╝███████║██║  ║"
+          echo "  ║  ██║███╗██║██╔══╝  ██╔══██╗██╔═══╝ ██╔══██║██║  ║"
+          echo "  ║  ╚███╔███╔╝███████╗██████╔╝███████╗██║  ██║██║  ║"
+          echo "  ║   ╚══╝╚══╝ ╚══════╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ║"
+          echo "  ╠══════════════════════════════════════════════════╣"
+          echo "  ║  🌸 APK Pro Builder · GitHub Actions            ║"
+          echo "  ╠══════════════════════════════════════════════════╣"
+          echo "  ║  📱 App   : $APP_NAME"
+          echo "  ║  🔧 Build : $BUILD_TYPE"
+          echo "  ║  📦 Type  : $PROJECT_TYPE"
+          echo "  ║  🆔 ID    : $BUILD_ID"
+          echo "  ╚══════════════════════════════════════════════════╝"
+          echo ""
+
+      # ══════════════════════════════════════════════
       - name: ☕ Setup Java 17
         uses: actions/setup-java@v4
         with:
@@ -60,12 +72,18 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      # ── Setup Android SDK ──
+      - name: 🌸 [1/6] ░░░░░░░░░░░░░░░  10% — Java siap
+        run: echo "  ▓▓░░░░░░░░░░░░░  10%  ☕ Java $(java -version 2>&1 | head -1 | cut -d'"' -f2) siap!"
+
+      # ══════════════════════════════════════════════
       - name: 🤖 Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # ── Cache Gradle ──
-      - name: 📦 Cache Gradle dependencies
+      - name: 🌸 [2/6] ▓▓▓▓░░░░░░░░░░░  28% — Android SDK siap
+        run: echo "  ▓▓▓▓░░░░░░░░░░░  28%  🤖 Android SDK tersedia!"
+
+      # ══════════════════════════════════════════════
+      - name: 📦 Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
@@ -74,7 +92,7 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
 
-      # ── Setup Flutter (conditional) ──
+      # ══════════════════════════════════════════════
       - name: 🐦 Setup Flutter
         if: env.PROJECT_TYPE == 'flutter'
         uses: subosito/flutter-action@v2
@@ -83,36 +101,24 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 🐦 Get Flutter dependencies
+      - name: 🐦 Flutter pub get
         if: env.PROJECT_TYPE == 'flutter'
         run: flutter pub get
         working-directory: web2apk-template
 
-      # ── Anime Build Animation ──
-      - name: 🌸 Anime Build Start
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "   ╔═══════════════════════════════════════╗"
-          echo "   ║   🌸  WEB2APK PRO BUILD SYSTEM  🌸   ║"
-          echo "   ║         Powered by GitHub Actions      ║"
-          echo "   ╚═══════════════════════════════════════╝"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
-          echo "  📱 App Name   : $APP_NAME"
-          echo "  🔧 Build Type : $BUILD_TYPE"
-          echo "  📦 Project    : $PROJECT_TYPE"
-          echo "  🆔 Build ID   : $BUILD_ID"
-          echo ""
-          echo "  ⚡ Starting build sequence..."
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - name: 🌸 [3/6] ▓▓▓▓▓▓▓░░░░░░░░  45% — Dependencies siap
+        run: echo "  ▓▓▓▓▓▓▓░░░░░░░░  45%  📦 Dependencies berhasil diinstall!"
 
-      # ── Grant Gradle Permission ──
-      - name: 🔑 Grant execute permission for gradlew
+      # ══════════════════════════════════════════════
+      - name: 🔑 chmod gradlew
         if: env.PROJECT_TYPE == 'android'
         run: chmod +x gradlew
         working-directory: web2apk-template/android
 
-      # ── Build Android ──
+      - name: 🌸 [4/6] ▓▓▓▓▓▓▓▓▓░░░░░░  60% — Kompilasi dimulai...
+        run: echo "  ▓▓▓▓▓▓▓▓▓░░░░░░  60%  ⚡ Kompilasi source code..."
+
+      # ══════════════════════════════════════════════
       - name: 🏗️ Build Android APK
         if: env.PROJECT_TYPE == 'android'
         run: |
@@ -123,7 +129,6 @@ jobs:
           fi
         working-directory: web2apk-template/android
 
-      # ── Build Flutter ──
       - name: 🐦 Build Flutter APK
         if: env.PROJECT_TYPE == 'flutter'
         run: |
@@ -134,76 +139,65 @@ jobs:
           fi
         working-directory: web2apk-template
 
-      # ── Locate APK ──
-      - name: 🔍 Find APK file
-        id: find_apk
+      - name: 🌸 [5/6] ▓▓▓▓▓▓▓▓▓▓▓▓░░░  85% — Packaging APK...
+        run: echo "  ▓▓▓▓▓▓▓▓▓▓▓▓░░░  85%  📦 Packaging APK..."
+
+      # ══════════════════════════════════════════════
+      - name: 🔍 Locate & Rename APK
+        id: apk
         run: |
           if [ "$PROJECT_TYPE" = "flutter" ]; then
-            APK_PATH=$(find web2apk-template/build/app/outputs/flutter-apk -name "*.apk" | head -1)
+            SRC=$(find web2apk-template/build/app/outputs/flutter-apk -name "*.apk" | head -1)
           else
-            APK_PATH=$(find web2apk-template/android/app/build/outputs/apk -name "*.apk" | head -1)
+            SRC=$(find web2apk-template/android/app/build/outputs/apk -name "*.apk" | head -1)
           fi
-          echo "APK found: $APK_PATH"
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
-          
-          # Rename to build_id for easy identification
-          cp "$APK_PATH" "app-${BUILD_TYPE}-${BUILD_ID}.apk"
+          DEST="app-${BUILD_TYPE}-${BUILD_ID}.apk"
+          cp "$SRC" "$DEST"
+          echo "file=$DEST" >> $GITHUB_OUTPUT
+          echo "  APK: $DEST ($(du -sh $DEST | cut -f1))"
 
-      # ── Upload Artifact ──
-      - name: 📤 Upload APK artifact
+      - name: 📤 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk-${{ env.BUILD_ID }}
-          path: app-${{ env.BUILD_TYPE }}-${{ env.BUILD_ID }}.apk
+          path: ${{ steps.apk.outputs.file }}
           retention-days: 7
           if-no-files-found: error
 
-      # ── Anime Build Complete ──
-      - name: 🎉 Build Complete!
+      # ══════════════════════════════════════════════
+      - name: 🌸 Animasi — Build Sukses!
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "  ✅ BUILD SUCCESSFUL!"
           echo ""
-          echo "  🌸 APK Name  : app-${BUILD_TYPE}-${BUILD_ID}.apk"
-          echo "  🌸 App       : $APP_NAME"
-          echo "  🌸 Type      : $BUILD_TYPE"
+          echo "  ╔══════════════════════════════════════════════════╗"
+          echo "  ║  ███████╗██╗   ██╗██╗  ██╗███████╗███████╗███╗  ║"
+          echo "  ║  ██╔════╝██║   ██║██║ ██╔╝██╔════╝██╔════╝████╗ ║"
+          echo "  ║  ███████╗██║   ██║█████╔╝ █████╗  ███████╗ ╚██║ ║"
+          echo "  ║  ╚════██║██║   ██║██╔═██╗ ██╔══╝  ╚════██║  ██║ ║"
+          echo "  ║  ███████║╚██████╔╝██║  ██╗███████╗███████║  ██║ ║"
+          echo "  ║  ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝  ╚═╝ ║"
+          echo "  ╠══════════════════════════════════════════════════╣"
+          echo "  ║  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  100%  ✅ SELESAI!           ║"
+          echo "  ║                                                  ║"
+          echo "  ║  📱 APK  : app-${BUILD_TYPE}-${BUILD_ID}.apk    ║"
+          echo "  ║  🌸 App  : $APP_NAME                            ║"
+          echo "  ║  ⬇️  Download: Actions → Artifacts              ║"
+          echo "  ╚══════════════════════════════════════════════════╝"
           echo ""
-          echo "  ⬇️  Download from Actions → Artifacts"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  🌸 🌸 🌸  BUILD BERHASIL!  🌸 🌸 🌸"
 
-      # ── Notify on Failure ──
-      - name: ❌ Notify on failure
-        if: failure()
-        run: |
-          echo "BUILD FAILED for BUILD_ID=$BUILD_ID"
-          echo "Check logs above for error details."
-
-  # ─────────────────────────────────────────
-  #  NOTIFY JOB (optional Telegram webhook)
-  # ─────────────────────────────────────────
-  notify:
-    name: 📢 Notify Telegram
-    needs: build
-    runs-on: ubuntu-latest
-    if: always() && inputs.build_id != ''
-
-    steps:
-      - name: 📤 Send build result to Telegram
+      # ══════════════════════════════════════════════
+      - name: 📢 Notify Telegram — Sukses
+        if: always() && inputs.build_id != ''
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
-          BUILD_STATUS: ${{ needs.build.result }}
-          BUILD_ID: ${{ inputs.build_id }}
+          CHAT_ID:   ${{ secrets.ADMIN_CHAT_ID }}
+          STATUS:    ${{ job.status }}
         run: |
-          if [ "$BUILD_STATUS" = "success" ]; then
-            MSG="✅ Build *$BUILD_ID* selesai! APK siap didownload dari Actions."
+          if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then exit 0; fi
+          if [ "$STATUS" = "success" ]; then
+            MSG="✅ *Build Sukses!*%0A📱 App: *${APP_NAME}*%0A🆔 ID: \`${BUILD_ID}\`%0A%0A⬇️ APK siap didownload"
           else
-            MSG="❌ Build *$BUILD_ID* gagal. Cek GitHub Actions untuk detail error."
+            MSG="❌ *Build Gagal!*%0A📱 App: *${APP_NAME}*%0A🆔 ID: \`${BUILD_ID}\`%0A%0A🔗 Cek log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
-          
-          if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ]; then
-            curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-              -d "chat_id=${CHAT_ID}" \
-              -d "text=${MSG}" \
-              -d "parse_mode=Markdown"
-          fi
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}&text=${MSG}&parse_mode=Markdown" > /dev/null
