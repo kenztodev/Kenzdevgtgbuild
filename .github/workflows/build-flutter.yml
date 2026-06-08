@@ -1,0 +1,49 @@
+name: Build Flutter APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        required: true
+        type: string
+      zip_filename:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: 'stable'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Download ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event.inputs.zip_filename }}
+          path: project/
+        continue-on-error: true
+
+      - name: Build
+        run: |
+          cd project
+          flutter pub get
+          flutter build apk --${{ github.event.inputs.build_mode }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-apk-${{ github.run_id }}
+          path: project/build/app/outputs/flutter-apk/*.apk
+          retention-days: 7
