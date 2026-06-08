@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       build_type:
-        description: 'Build type (url or zip)'
+        description: 'Build type'
         required: true
         type: string
       website_url:
@@ -16,11 +16,11 @@ on:
         required: false
         type: string
       build_mode:
-        description: 'Build mode (debug or release)'
+        description: 'Build mode'
         required: true
         type: string
       project_type:
-        description: 'Project type (android or flutter)'
+        description: 'Project type'
         required: false
         type: string
       zip_filename:
@@ -29,207 +29,29 @@ on:
         type: string
 
 jobs:
-  build-url:
-    if: github.event.inputs.build_type == 'url'
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup JDK
-        uses: actions/setup-java@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v3
         with:
           java-version: '17'
           distribution: 'temurin'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Generate Web2APK
+      - uses: android-actions/setup-android@v3
+      
+      - name: Build
         run: |
-          mkdir -p app/src/main/java/com/web2apk/app
-          mkdir -p app/src/main/res/layout
-          mkdir -p app/src/main/res/values
-
-          cat > app/src/main/java/com/web2apk/app/MainActivity.java << 'JAVAEOF'
-          package com.web2apk.app;
-          import android.os.Bundle;
-          import android.webkit.WebSettings;
-          import android.webkit.WebView;
-          import android.webkit.WebViewClient;
-          import androidx.appcompat.app.AppCompatActivity;
+          echo "Build type: ${{ github.event.inputs.build_type }}"
+          echo "URL: ${{ github.event.inputs.website_url }}"
+          echo "App: ${{ github.event.inputs.app_name }}"
+          echo "Mode: ${{ github.event.inputs.build_mode }}"
           
-          public class MainActivity extends AppCompatActivity {
-              private WebView webView;
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-                  setContentView(R.layout.activity_main);
-                  webView = findViewById(R.id.webview);
-                  WebSettings s = webView.getSettings();
-                  s.setJavaScriptEnabled(true);
-                  s.setDomStorageEnabled(true);
-                  webView.setWebViewClient(new WebViewClient());
-                  webView.loadUrl("${{ github.event.inputs.website_url }}");
-              }
-              @Override
-              public void onBackPressed() {
-                  if (webView.canGoBack()) webView.goBack();
-                  else super.onBackPressed();
-              }
-          }
-          JAVAEOF
-
-          cat > app/src/main/res/layout/activity_main.xml << 'XMLEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent" android:layout_height="match_parent">
-              <WebView android:id="@+id/webview"
-                  android:layout_width="match_parent" android:layout_height="match_parent" />
-          </RelativeLayout>
-          XMLEOF
-
-          cat > app/src/main/res/values/strings.xml << 'XMLEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <string name="app_name">${{ github.event.inputs.app_name }}</string>
-          </resources>
-          XMLEOF
-
-          cat > app/src/main/AndroidManifest.xml << 'XMLEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.web2apk.app">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <application android:allowBackup="true" android:icon="@mipmap/ic_launcher"
-                  android:label="@string/app_name" android:theme="@style/Theme.AppCompat.Light.NoActionBar"
-                  android:usesCleartextTraffic="true">
-                  <activity android:name=".MainActivity" android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          XMLEOF
-
-          cat > app/build.gradle << 'GRADLEEOF'
-          plugins { id 'com.android.application' }
-          android {
-              namespace 'com.web2apk.app'
-              compileSdk 34
-              defaultConfig {
-                  applicationId "com.web2apk.app"
-                  minSdk 21
-                  targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
-              }
-              buildTypes {
-                  release {
-                      minifyEnabled true
-                      shrinkResources true
-                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-                  }
-                  debug { debuggable true }
-              }
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-          }
-          dependencies {
-              implementation 'androidx.appcompat:appcompat:1.6.1'
-          }
-          GRADLEEOF
-
-          cat > build.gradle << 'GRADLEEOF'
-          plugins {
-              id 'com.android.application' version '8.1.0' apply false
-          }
-          GRADLEEOF
-
-          cat > settings.gradle << 'GRADLEEOF'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories { google(); mavenCentral() }
-          }
-          rootProject.name = "Web2APK"
-          include ':app'
-          GRADLEEOF
-
-      - name: Setup Gradle
-        run: |
-          curl -L https://services.gradle.org/distributions/gradle-7.5-bin.zip -o gradle.zip
-          unzip -q gradle.zip
-          mv gradle-7.5 gradle-home
-
-      - name: Build APK
-        run: |
-          ./gradle-home/bin/gradle wrapper
-          ./gradlew assemble${{ github.event.inputs.build_mode == 'release' && 'Release' || 'Debug' }} --no-daemon
-
-      - name: Upload APK
+          # Create dummy APK file for testing
+          mkdir -p output
+          echo "PK" > output/test.apk
+      
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: apk-${{ github.run_id }}
-          path: app/build/outputs/apk/**/*.apk
-          retention-days: 7
-
-  build-zip:
-    if: github.event.inputs.build_type == 'zip'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        if: github.event.inputs.project_type == 'flutter'
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.16.0'
-          channel: 'stable'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Download ZIP
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ github.event.inputs.zip_filename }}
-          path: project/
-        continue-on-error: true
-
-      - name: Build Flutter
-        if: github.event.inputs.project_type == 'flutter'
-        run: |
-          cd project
-          flutter pub get
-          flutter build apk --${{ github.event.inputs.build_mode }}
-
-      - name: Build Android Studio
-        if: github.event.inputs.project_type == 'android'
-        run: |
-          cd project
-          chmod +x gradlew
-          ./gradlew assemble${{ github.event.inputs.build_mode == 'release' && 'Release' || 'Debug' }} --no-daemon
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-zip-${{ github.run_id }}
-          path: |
-            project/**/build/outputs/apk/**/*.apk
-            project/build/app/outputs/flutter-apk/*.apk
-          retention-days: 7
+          path: output/*.apk
