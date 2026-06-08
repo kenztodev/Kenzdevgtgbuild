@@ -47,7 +47,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Generate Web2APK Project
+      - name: Generate Web2APK
         run: |
           mkdir -p app/src/main/java/com/web2apk/app
           mkdir -p app/src/main/res/layout
