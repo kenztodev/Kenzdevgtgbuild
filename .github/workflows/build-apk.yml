@@ -1,50 +1,31 @@
-name: Build APK
+name: Build Web2APK
 
 on:
   workflow_dispatch:
     inputs:
-      build_type:
-        description: 'Build type (url or zip)'
-        required: true
-        type: string
       website_url:
-        description: 'Website URL (for URL build)'
-        required: false
+        required: true
         type: string
       app_name:
-        description: 'App name (for URL build)'
-        required: false
-        type: string
-      build_mode:
-        description: 'Build mode (debug or release)'
         required: true
         type: string
-      project_type:
-        description: 'Project type (android or flutter)'
-        required: false
-        type: string
-      zip_filename:
-        description: 'ZIP filename (for ZIP build)'
-        required: false
+      build_mode:
+        required: true
         type: string
 
 env:
   GRADLE_VERSION: 7.5
-  ANDROID_COMPILE_SDK: 34
-  ANDROID_BUILD_TOOLS: 34.0.0
-  ANDROID_SDK_TOOLS: 9477386
 
 jobs:
-  build-url-apk:
-    if: github.event.inputs.build_type == 'url'
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup JDK
         uses: actions/setup-java@v3
         with:
           java-version: '17'
@@ -52,34 +33,14 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 9477386
-
-      - name: Cache Gradle
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
 
       - name: Generate Web2APK Project
         run: |
-          mkdir -p app-build/app/src/main/java/com/web2apk/app
-          mkdir -p app-build/app/src/main/res/layout
-          mkdir -p app-build/app/src/main/res/values
-          mkdir -p app-build/app/src/main/res/mipmap-hdpi
-          mkdir -p app-build/app/src/main/res/mipmap-mdpi
-          mkdir -p app-build/app/src/main/res/mipmap-xhdpi
-          mkdir -p app-build/app/src/main/res/mipmap-xxhdpi
-          mkdir -p app-build/app/src/main/res/mipmap-xxxhdpi
+          mkdir -p app/src/main/java/com/web2apk/app
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
 
-      - name: Create Project Files
-        run: |
-          # MainActivity.java
-          cat > app-build/app/src/main/java/com/web2apk/app/MainActivity.java << 'EOF'
+          cat > app/src/main/java/com/web2apk/app/MainActivity.java << 'EOF'
           package com.web2apk.app;
           import android.os.Bundle;
           import android.webkit.WebSettings;
@@ -94,10 +55,9 @@ jobs:
                   super.onCreate(savedInstanceState);
                   setContentView(R.layout.activity_main);
                   webView = findViewById(R.id.webview);
-                  WebSettings settings = webView.getSettings();
-                  settings.setJavaScriptEnabled(true);
-                  settings.setDomStorageEnabled(true);
-                  settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                  WebSettings s = webView.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
                   webView.setWebViewClient(new WebViewClient());
                   webView.loadUrl("${{ github.event.inputs.website_url }}");
               }
@@ -109,8 +69,7 @@ jobs:
           }
           EOF
 
-          # Layout
-          cat > app-build/app/src/main/res/layout/activity_main.xml << 'EOF'
+          cat > app/src/main/res/layout/activity_main.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
               android:layout_width="match_parent" android:layout_height="match_parent">
@@ -119,16 +78,14 @@ jobs:
           </RelativeLayout>
           EOF
 
-          # Strings
-          cat > app-build/app/src/main/res/values/strings.xml << 'EOF'
+          cat > app/src/main/res/values/strings.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
               <string name="app_name">${{ github.event.inputs.app_name }}</string>
           </resources>
           EOF
 
-          # Manifest
-          cat > app-build/app/src/main/AndroidManifest.xml << 'EOF'
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.web2apk.app">
               <uses-permission android:name="android.permission.INTERNET" />
@@ -145,10 +102,7 @@ jobs:
           </manifest>
           EOF
 
-      - name: Create Gradle Files
-        run: |
-          # App build.gradle
-          cat > app-build/app/build.gradle << 'EOF'
+          cat > app/build.gradle << 'EOF'
           plugins { id 'com.android.application' }
           android {
               namespace 'com.web2apk.app'
@@ -157,8 +111,8 @@ jobs:
                   applicationId "com.web2apk.app"
                   minSdk 21
                   targetSdk 34
-                  versionCode ${{ github.run_number }}
-                  versionName "1.0.${{ github.run_number }}"
+                  versionCode 1
+                  versionName "1.0"
               }
               buildTypes {
                   release {
@@ -166,9 +120,7 @@ jobs:
                       shrinkResources true
                       proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
                   }
-                  debug {
-                      debuggable true
-                  }
+                  debug { debuggable true }
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -180,15 +132,13 @@ jobs:
           }
           EOF
 
-          # Project build.gradle
-          cat > app-build/build.gradle << 'EOF'
+          cat > build.gradle << 'EOF'
           plugins {
               id 'com.android.application' version '8.1.0' apply false
           }
           EOF
 
-          # settings.gradle
-          cat > app-build/settings.gradle << 'EOF'
+          cat > settings.gradle << 'EOF'
           pluginManagement {
               repositories {
                   google()
@@ -204,19 +154,8 @@ jobs:
           include ':app'
           EOF
 
-          # gradle.properties
-          cat > app-build/gradle.properties << 'EOF'
-          org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          android.enableJetifier=true
-          org.gradle.daemon=true
-          org.gradle.parallel=true
-          org.gradle.configureondemand=true
-          EOF
-
-      - name: Setup Gradle Wrapper
+      - name: Setup Gradle
         run: |
-          cd app-build
           mkdir -p gradle/wrapper
           curl -L https://services.gradle.org/distributions/gradle-${{ env.GRADLE_VERSION }}-bin.zip -o gradle.zip
           unzip -q gradle.zip
@@ -229,87 +168,22 @@ jobs:
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
           EOF
-          
-          cp gradle-home/bin/gradle gradlew || true
-          chmod +x gradlew
 
       - name: Build APK
         run: |
-          cd app-build
+          ./gradle-home/bin/gradle wrapper
           ./gradlew assemble${{ github.event.inputs.build_mode == 'release' && 'Release' || 'Debug' }} --no-daemon
 
       - name: Prepare Output
         run: |
           mkdir -p output
           APP_NAME="${{ github.event.inputs.app_name || 'app' }}"
-          cp app-build/app/build/outputs/apk/${{ github.event.inputs.build_mode }}/*.apk \
+          cp app/build/outputs/apk/${{ github.event.inputs.build_mode }}/*.apk \
              "output/${APP_NAME// /_}_${{ github.event.inputs.build_mode }}.apk"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk-${{ github.run_id }}
-          path: output/*.apk
-          retention-days: 7
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        if: github.event.inputs.build_mode == 'release'
-        with:
-          files: output/*.apk
-          tag_name: build-${{ github.run_number }}-${{ github.run_id }}
-          name: ${{ github.event.inputs.app_name }} v1.0.${{ github.run_number }}
-          body: |
-            🌐 URL: ${{ github.event.inputs.website_url }}
-            📱 App: ${{ github.event.inputs.app_name }}
-            🔨 Build: ${{ github.event.inputs.build_mode }}
-
-  build-zip-apk:
-    if: github.event.inputs.build_type == 'zip'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Download ZIP Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ github.event.inputs.zip_filename }}
-          path: project/
-        continue-on-error: true
-
-      - name: Setup Environment
-        run: |
-          if [ "${{ github.event.inputs.project_type }}" == "flutter" ]; then
-            git clone https://github.com/flutter/flutter.git -b stable --depth 1
-            echo "$PWD/flutter/bin" >> $GITHUB_PATH
-            flutter doctor -v
-            flutter config --no-analytics
-          fi
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Build Project
-        run: |
-          cd project
-          
-          if [ "${{ github.event.inputs.project_type }}" == "flutter" ]; then
-            flutter pub get
-            flutter build apk --${{ github.event.inputs.build_mode }}
-            mkdir -p ../output
-            cp build/app/outputs/flutter-apk/*.apk ../output/
-          else
-            ./gradlew assemble${{ github.event.inputs.build_mode == 'release' && 'Release' || 'Debug' }}
-            mkdir -p ../output
-            cp app/build/outputs/apk/**/*.apk ../output/ || cp */build/outputs/apk/**/*.apk ../output/
-          fi
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-zip-${{ github.run_id }}
           path: output/*.apk
           retention-days: 7
