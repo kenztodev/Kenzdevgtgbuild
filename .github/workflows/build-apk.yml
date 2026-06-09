@@ -1,0 +1,329 @@
+name: Build APK from ZIP
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Tipe Build (release/debug)'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+      app_name:
+        description: 'Nama Aplikasi'
+        required: true
+        type: string
+      timestamp:
+        description: 'Timestamp'
+        required: false
+        type: string
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 9477386
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Install Flutter dependencies
+        run: |
+          flutter doctor
+          flutter precache
+      
+      - name: Accept Android Licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+      
+      - name: Extract uploaded project
+        run: |
+          # Cari file zip yang diupload
+          ZIP_FILE=$(find . -name "*.zip" -type f | head -n 1)
+          if [ -f "$ZIP_FILE" ]; then
+            echo "Found ZIP: $ZIP_FILE"
+            unzip -o "$ZIP_FILE" -d ./project_source/
+            rm "$ZIP_FILE"
+          else
+            echo "No ZIP found, using existing project"
+            mkdir -p ./project_source
+            cp -r ./* ./project_source/
+          fi
+          
+          ls -la ./project_source/
+      
+      - name: Detect project type
+        id: detect
+        run: |
+          cd ./project_source
+          
+          if [ -f "pubspec.yaml" ]; then
+            echo "project_type=flutter" >> $GITHUB_OUTPUT
+            echo "✅ Detected Flutter project"
+          elif [ -f "build.gradle" ] || [ -f "app/build.gradle" ]; then
+            echo "project_type=android" >> $GITHUB_OUTPUT
+            echo "✅ Detected Android Studio project"
+          elif [ -f "package.json" ]; then
+            echo "project_type=react" >> $GITHUB_OUTPUT
+            echo "✅ Detected React Native project"
+          else
+            echo "project_type=webview" >> $GITHUB_OUTPUT
+            echo "⚠️ Creating WebView wrapper"
+          fi
+      
+      - name: Build Flutter APK
+        if: steps.detect.outputs.project_type == 'flutter'
+        run: |
+          cd ./project_source
+          
+          # Clean & Get packages
+          flutter clean
+          flutter pub get
+          
+          # Build APK
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            flutter build apk --release --split-per-abi
+          else
+            flutter build apk --debug
+          fi
+          
+          # Copy hasil build
+          mkdir -p ../app_build
+          if [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+            cp build/app/outputs/flutter-apk/app-release.apk ../app_build/
+          elif [ -f "build/app/outputs/flutter-apk/app-debug.apk" ]; then
+            cp build/app/outputs/flutter-apk/app-debug.apk ../app_build/
+          fi
+      
+      - name: Build Android Studio APK
+        if: steps.detect.outputs.project_type == 'android'
+        run: |
+          cd ./project_source
+          
+          # Give permission
+          chmod +x gradlew
+          
+          # Build APK
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            ./gradlew assembleRelease
+          else
+            ./gradlew assembleDebug
+          fi
+          
+          # Copy hasil build
+          mkdir -p ../app_build
+          find . -name "*.apk" -exec cp {} ../app_build/ \;
+      
+      - name: Build React Native APK
+        if: steps.detect.outputs.project_type == 'react'
+        run: |
+          cd ./project_source
+          
+          # Install dependencies
+          npm install
+          
+          # Build APK
+          cd android
+          chmod +x gradlew
+          
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            ./gradlew assembleRelease
+          else
+            ./gradlew assembleDebug
+          fi
+          
+          # Copy hasil build
+          mkdir -p ../../app_build
+          find . -name "*.apk" -exec cp {} ../../app_build/ \;
+      
+      - name: Create WebView APK (fallback)
+        if: steps.detect.outputs.project_type == 'webview'
+        run: |
+          # Buat project WebView sederhana
+          mkdir -p ./webview_project
+          cat > ./webview_project/settings.gradle << 'EOF'
+          rootProject.name = "WebViewApp"
+          include ':app'
+          EOF
+          
+          cat > ./webview_project/build.gradle << 'EOF'
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.1.0'
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+          
+          mkdir -p ./webview_project/app
+          cat > ./webview_project/app/build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'com.webview.app'
+              compileSdk 34
+              
+              defaultConfig {
+                  applicationId "com.webview.app"
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }
+              }
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'androidx.webkit:webkit:1.9.0'
+          }
+          EOF
+          
+          mkdir -p ./webview_project/app/src/main/java/com/webview/app/
+          cat > ./webview_project/app/src/main/java/com/webview/app/MainActivity.java << 'EOF'
+          package com.webview.app;
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import androidx.appcompat.app.AppCompatActivity;
+          
+          public class MainActivity extends AppCompatActivity {
+              private WebView webView;
+              
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+                  
+                  webView = findViewById(R.id.webView);
+                  webView.setWebViewClient(new WebViewClient());
+                  webView.getSettings().setJavaScriptEnabled(true);
+                  webView.loadUrl("https://example.com"); // Ganti dengan URL user
+              }
+          }
+          EOF
+          
+          mkdir -p ./webview_project/app/src/main/res/layout/
+          cat > ./webview_project/app/src/main/res/layout/activity_main.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <WebView xmlns:android="http://schemas.android.com/apk/res/android"
+              android:id="@+id/webView"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent" />
+          EOF
+          
+          mkdir -p ./webview_project/app/src/main/AndroidManifest.xml
+          cat > ./webview_project/app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="${{ github.event.inputs.app_name }}"
+                  android:usesCleartextTraffic="true">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          
+          cd ./webview_project
+          # Create dummy icon
+          mkdir -p app/src/main/res/mipmap-hdpi
+          
+          # Build APK
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            ./gradlew assembleRelease
+          else
+            ./gradlew assembleDebug
+          fi
+          
+          mkdir -p ../app_build
+          find . -name "*.apk" -exec cp {} ../app_build/ \;
+      
+      - name: Rename APK files
+        run: |
+          cd ./app_build
+          for apk in *.apk; do
+            if [ -f "$apk" ]; then
+              NEW_NAME="${{ github.event.inputs.app_name }}_${{ github.event.inputs.build_type }}_${GITHUB_RUN_ID}.apk"
+              mv "$apk" "$NEW_NAME"
+              echo "APK_NAME=$NEW_NAME" >> $GITHUB_ENV
+            fi
+          done
+      
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-build
+          path: ./app_build/*.apk
+          retention-days: 7
+      
+      - name: Get APK size
+        id: apk_info
+        run: |
+          cd ./app_build
+          APK_FILE=$(ls *.apk 2>/dev/null | head -n 1)
+          if [ -f "$APK_FILE" ]; then
+            SIZE=$(stat -c%s "$APK_FILE")
+            SIZE_MB=$(echo "scale=2; $SIZE/1048576" | bc)
+            echo "apk_size=$SIZE_MB MB" >> $GITHUB_OUTPUT
+            echo "✅ APK built successfully: $APK_FILE ($SIZE_MB MB)"
+          else
+            echo "❌ No APK found!"
+            exit 1
+          fi
+      
+      - name: Build success notification
+        if: success()
+        run: |
+          echo "✅ BUILD SUCCESS!"
+          echo "📱 App Name: ${{ github.event.inputs.app_name }}"
+          echo "🔧 Build Type: ${{ github.event.inputs.build_type }}"
+          echo "📦 Size: ${{ steps.apk_info.outputs.apk_size }}"
+      
+      - name: Build failure notification
+        if: failure()
+        run: |
+          echo "❌ BUILD FAILED!"
+          echo "Check logs for details"
